@@ -23,6 +23,7 @@
 </div>
 
 ## 🎉 What's New
+* **[2026.06.09]** [Fireworks AI integration for fine-tuning](examples/fireworks/): Run managed supervised fine-tuning (SFT) on Fireworks AI with `FireworksTrainer` — upload curated data, train a LoRA, and sample from the deployed model behind the same trainer interface as Tinker.
 * **[2026.03.14]** [Tinker integration for fine-tuning](examples/poem_finetuning_example.py): Go from curated data to a LoRA fine-tuned model in a few lines of Python using the Tinker SDK.
 * **[2025.12.05]** [Launched OpenThoughts-Agents](https://www.open-thoughts.ai/blog/agent) whose data was curated using Curator.
 * **[2025.04.09]** [Launching Reasoning Datasets Competition](https://huggingface.co/blog/bespokelabs/reasoning-datasets-competition) with HuggingFace and Together.ai. Win $5000 USD worth of prizes!
@@ -64,6 +65,7 @@ pip install bespokelabs-curator
 | **Sentiment analysis** | <a href="https://colab.research.google.com/drive/1Zfl3g7POsqqYQqkzXdyhYRSAymLhZugn?usp=sharing" target="_blank"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> | Aspect-based sentiment analysis of restaurant reviews and finetuning using Together.ai |
 | **RAFT for domain-specific RAG** | <a href="https://github.com/bespokelabsai/curator/tree/main/examples/blocks/raft" target="_blank">Code</a> | Implement Retrieval Augmented Fine-Tuning (RAFT) that processes domain-specific documents, generates questions, and prepares data for fine-tuning LLMs. |
 | **Poem generation & LoRA fine-tuning** | <a href="https://github.com/bespokelabsai/curator/blob/main/examples/poem_finetuning_example.py" target="_blank">Code</a> | End-to-end pipeline: curate poem data with Curator, then LoRA fine-tune with TinkerTrainer |
+| **Managed fine-tuning on Fireworks AI** | <a href="https://github.com/bespokelabsai/curator/tree/main/examples/fireworks" target="_blank">Code</a> | Run a managed SFT job on Fireworks AI with FireworksTrainer, then sample from the deployed LoRA model |
 
 ### Data Generation
 | **Task** | **Link(s)** | **Goal** |
@@ -367,6 +369,56 @@ result = trainer.train([{"question": "What is 2+2?", "answer": "4"}, ...])
 ```
 
 See the full [poem fine-tuning example](examples/poem_finetuning_example.py) for an end-to-end pipeline that curates data with `curator.LLM` and then fine-tunes with `TinkerTrainer`.
+
+## 🎆 Fine-Tuning with Fireworks AI
+
+Curator also integrates with [Fireworks AI](https://docs.fireworks.ai/fine-tuning/fine-tuning-models) managed fine-tuning. Fireworks runs supervised fine-tuning (SFT) as a server-side job: your chat data is uploaded, an SFT job is submitted against a base model, and the resulting LoRA model is served for inference — all behind the same `BaseTrainer` interface as `TinkerTrainer`.
+
+```bash
+pip install bespokelabs-curator fireworks-ai   # fireworks-ai is an optional add-on
+export FIREWORKS_API_KEY="fw_..."
+```
+
+```python
+from bespokelabs.curator import FireworksTrainer, FireworksTrainerConfig
+
+# Configure the managed fine-tuning job
+config = FireworksTrainerConfig(
+    base_model="qwen3-4b",   # smallest fine-tunable Fireworks model
+    epochs=2,
+    lora_rank=8,             # power of two up to 32; None for full fine-tuning
+    learning_rate=1e-4,      # or omit to let Fireworks auto-select
+)
+
+# Training data is a list of chat-format dicts (or a HuggingFace Dataset).
+# Fireworks requires at least 3 examples.
+training_data = [
+    {"messages": [
+        {"role": "user", "content": "What is Python?"},
+        {"role": "assistant", "content": "Python is a programming language."},
+    ]},
+    # ...
+]
+
+# Upload data + run the supervised fine-tuning job (polls until complete)
+trainer = FireworksTrainer(config)
+result = trainer.train(training_data)
+print(f"Fine-tuned model: {result.weights_name}")
+
+# Sample from the fine-tuned model. Fine-tuned LoRA models can't be served
+# serverlessly, so this provisions an on-demand deployment (takes a few minutes).
+response = trainer.sample("Explain recursion in Python")
+print(response)
+
+trainer.close()   # tear down the deployment when done
+```
+
+> **Note:** Running real Fireworks training requires an account with training quota
+> (Tier 2 / credits). Without the SDK or an API key, `FireworksTrainer` runs in mock
+> mode so examples and tests work offline. Subclass `FireworksTrainer` and override
+> `format_example()` to handle custom data layouts, exactly as with `TinkerTrainer`.
+
+See the [Fireworks examples](examples/fireworks/) for basic and custom-trainer pipelines.
 
 ## Bespoke Curator Viewer
 The hosted curator viewer is a rich interface to visualize data -- and makes visually inspecting the data much easier.
